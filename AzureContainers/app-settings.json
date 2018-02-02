@@ -1,0 +1,9 @@
+﻿{
+  "Configuration": {
+    "Title": "Pioneer Console Boilerplate"
+  },
+  "Azure": {
+    "StorageConnectionString": "UseDevelopmentStorage=true",
+    "ImagesContainerName":  "applicantdocuments"
+  }
+}
