@@ -4,6 +4,6 @@
   },
   "Azure": {
     "StorageConnectionString": "UseDevelopmentStorage=true",
-    "ImagesContainerName":  "applicantdocuments"
+    "ImagesContainerName": "crm-applicantdocuments"
   }
 }
