@@ -1,26 +1,26 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Microsoft.WindowsAzure.Storage.Blob;
-using RerouteBlobs.Configurations;
-using RerouteBlobs.Interfaces;
-using Serilog;
-
-namespace RerouteBlobs.Implementations
+﻿namespace AzureContainers.Implementations
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Diagnostics;
+    using System.Text.RegularExpressions;
+    using System.Threading.Tasks;
+    using Configurations;
+    using Interfaces;
+    using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
+    using Microsoft.WindowsAzure.Storage.Blob;
+    using RerouteBlobs.Implementations;
+    using Serilog;
+
     public class BlobService : IBlobService
     {
-        private readonly ILogger<BlobService> _logger;
+        private readonly ILogger<IBlobService> _logger;
         private readonly AzureConfig _azureConfig;
         private readonly IAzureStorage _azureStorage;
         public List<string> ApplicantIds = new List<string>();
 
-        public BlobService(ILogger<BlobService> logger, IOptions<AzureConfig> azureConfig, IAzureStorage azureStorage)
+        public BlobService(ILogger<IBlobService> logger, IOptions<AzureConfig> azureConfig, IAzureStorage azureStorage)
         {
             _logger = logger;
             _azureConfig = azureConfig.Value;
@@ -31,78 +31,121 @@ namespace RerouteBlobs.Implementations
         {
             _logger.LogInformation($"Azure Storage Connection String: {_azureConfig.StorageConnectionString}");
 
-            await MoveBlobInSameStorageAccountAsync();
-            //await SaveAllBlobNamesToFileAsync();
+            Console.WriteLine("Choose operation: " +
+                              "\n1 - CountBlobsDirectoriesAndpages (default) " +
+                              "\n2 - SaveAllblobNamesToFileAsync() " +
+                              "\n3 - MoveBlobInSameStorageAccountAsync()");
+            var operation = Console.ReadLine();
+
+            switch (operation)
+            {
+                case "1":
+                    await CountBlobsDirectoriesAndPages();
+                    break;
+                case "2":
+                    await SaveAllBlobNamesToFileAsync();
+                    break;
+                case "3":
+                    await CopyBlobInSameStorageAccountAsync();
+                    break;
+                default:
+                    await CountBlobsDirectoriesAndPages();
+                    break;
+            }
         }
 
-        public async Task MoveBlobInSameStorageAccountAsync()
+        public async Task CopyBlobInSameStorageAccountAsync()
         {
-            BlobContinuationToken token = null;
-            do
+            var cloudBlocks = 0;
+            var cloudDirectory = 0;
+            var cloudPages = 0;
+            var noDots = 0;
+            var notePages = 0;
+
+            try
             {
-                var watchAllBlobsSelection = Stopwatch.StartNew();
-                BlobResultSegment resultSegment = await _azureStorage.Container.ListBlobsSegmentedAsync(token);
-                watchAllBlobsSelection.Stop();
-                var elapsedMs = watchAllBlobsSelection.ElapsedMilliseconds;
-                _logger.LogInformation($"Gettting all blobs elapsed time (ms): {elapsedMs}");
-                token = resultSegment.ContinuationToken;
-
-                var watchCopyingBlobs = Stopwatch.StartNew();
-                foreach (IListBlobItem item in resultSegment.Results)
+                BlobContinuationToken token = null;
+                do
                 {
-                    if (item.GetType() == typeof(CloudBlockBlob))
+                    var watchAllBlobsSelection = Stopwatch.StartNew();
+                    BlobResultSegment resultSegment = await _azureStorage.Container.ListBlobsSegmentedAsync(token);
+                    watchAllBlobsSelection.Stop();
+                    var elapsedMs = watchAllBlobsSelection.ElapsedMilliseconds;
+                    _logger.LogInformation($"Gettting all blobs elapsed time (ms): {elapsedMs}");
+                    token = resultSegment.ContinuationToken;
+
+                    var watchCopyingBlobs = Stopwatch.StartNew();
+                    foreach (IListBlobItem item in resultSegment.Results)
                     {
-                        CloudBlockBlob blob = (CloudBlockBlob)item;
+                        if (item.GetType() == typeof(CloudBlockBlob))
+                        {
+                            cloudBlocks++;
+                            CloudBlockBlob blob = (CloudBlockBlob)item;
 
-                        NewFileName FileName = GetBlobDetails(blob);
+                            NewFileName FileName = GetBlobDetails(blob);
 
-                        if (FileName.ApplicantId.Contains("NotePage"))
-                        {
-                            continue;
-                        }
+                            if (FileName.ApplicantId.Contains("NotePage"))
+                            {
+                                notePages++;
+                                continue;
+                            }
 
-                        if (!ApplicantIds.Contains(FileName.ApplicantId))
-                        {
-                            ApplicantIds.Add(FileName.ApplicantId);
-                            Console.WriteLine($"Creating directory: {FileName.ApplicantId}");
-                            _logger.LogInformation($"Directory created for applicant: {FileName.ApplicantId}");
+                            if (!ApplicantIds.Contains(FileName.ApplicantId))
+                            {
+                                ApplicantIds.Add(FileName.ApplicantId);
+                                Console.WriteLine($"Creating directory: {FileName.ApplicantId}");
+                                _logger.LogInformation($"Directory created for applicant: {FileName.ApplicantId}");
+                            }
+                            var previousDocumentLocation = _azureStorage.Container.GetBlockBlobReference($"{blob.Name}");
+                            var newDocumentLocation = _azureStorage.Container.GetBlockBlobReference($"{FileName.ApplicantId}/{FileName.FileName}");
+                            try
+                            {
+                                await newDocumentLocation.StartCopyAsync(previousDocumentLocation);
+                            }
+                            catch (Exception e)
+                            {
+                                _logger.LogError(e.Message);
+                                throw;
+                            }
+                            Log.Logger.Information($"Moved {previousDocumentLocation.Name} to {newDocumentLocation.Name}");
                         }
-                        var previousDocumentLocation = _azureStorage.Container.GetBlockBlobReference($"{blob.Name}");
-                        var newDocumentLocation = _azureStorage.Container.GetBlockBlobReference($"{FileName.ApplicantId}/{FileName.FileName}");
-                        try
+                        else if (item.GetType() == typeof(CloudBlobDirectory))
                         {
-                            await newDocumentLocation.StartCopyAsync(previousDocumentLocation);
+                            CloudBlobDirectory directory = (CloudBlobDirectory)item;
+                            Console.WriteLine($"Skipping existing directory: {directory.Uri}");
+                            cloudDirectory++;
+                            /* Delete blobs in directory
+                             * await DeleteBlobsInDirectory(directory);
+                             * continue;
+                             */
                         }
-                        catch (Exception e)
+                        else if (item.GetType() == typeof(CloudPageBlob))
                         {
-                            _logger.LogError(e.Message);
-                            throw;
+                            CloudPageBlob pageBlob = (CloudPageBlob)item;
+                            Console.WriteLine($"We are not using pageBlobs: {pageBlob}");
+                            cloudPages++;
                         }
-                        Log.Logger.Information($"Moved {previousDocumentLocation.Name} to {newDocumentLocation.Name}");
                     }
-                    else if (item.GetType() == typeof(CloudBlobDirectory))
-                    {
-                        CloudBlobDirectory directory = (CloudBlobDirectory) item;
-                        Console.WriteLine($"Skipping existing directory: {directory.Uri}");
+                    watchCopyingBlobs.Stop();
+                    /* Only run this if you want to create records to be processed.
+                     * await CreateNBlobsOf500KbAsync(1200);
+                     */
+                    /*
+                     */
+                    _logger.LogInformation($"Copying blobs elapsed time(ms): {watchCopyingBlobs.ElapsedMilliseconds}");
+                } while (token != null);
+                _logger.LogInformation($"Cloud Blobs: {cloudBlocks}");
+                _logger.LogInformation($"Cloud Directory: {cloudDirectory}");
+                _logger.LogInformation($"No Dots: {noDots}");
+                _logger.LogInformation($"Note Pages: {notePages}");
+                _logger.LogInformation("Finished with the Script.");
 
-                        /* Delete blobs in directory
-                         * await DeleteBlobsInDirectory(directory);
-                         * continue;
-                         */
-                    }
-                    else if (item.GetType() == typeof(CloudPageBlob))
-                    {
-                        CloudPageBlob pageBlob = (CloudPageBlob)item;
-                        Console.WriteLine($"We are not using pageBlobs: {pageBlob}");
-                    }
-                }
-                watchCopyingBlobs.Stop();
-                /* Only run this if you want to create records to be processed.
-                 * await CreateNBlobsOf500KbAsync(1200);
-                 */
-                _logger.LogInformation($"Copying blobs elapsed time(ms): {watchCopyingBlobs.ElapsedMilliseconds}");
-            } while (token != null);
-            _logger.LogInformation("Finished with the Script.");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
         }
 
         private async Task DeleteBlobsInDirectory(CloudBlobDirectory directory)
@@ -166,19 +209,29 @@ namespace RerouteBlobs.Implementations
                         throw;
                     }
                 }
-                _logger.LogInformation("Finished with the script.");
             } while (token != null);
+            _logger.LogInformation("Finished with the script.");
         }
         private NewFileName GetBlobDetails(CloudBlockBlob blob)
         {
-            string[] parts = blob.Name.Split('-');
-            string applicantId = parts[0];
-            string[] afterHyphen = parts[1].Split('.');
-            string proofType = afterHyphen[0];
-            string extension = afterHyphen[1];
-            string date = blob.Properties.LastModified.Value.LocalDateTime.ToString("yyyyMMdd");
+            try
+            {
+                string[] parts = blob.Name.Split('-');
+                string applicantId = parts[0];
+                string[] afterHyphen = parts[1].Split('.');
+                string proofType = afterHyphen[0];
+                string extension = afterHyphen[1];
+                string date = blob.Properties.LastModified.Value.LocalDateTime.ToString("yyyyMMdd");
 
-            return new NewFileName(applicantId, proofType, date, extension);
+                return new NewFileName(applicantId, proofType, date, extension);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(blob.Name);
+                Console.WriteLine(e);
+                throw;
+            }
+
         }
 
         public async Task CreateNBlobsOf500KbAsync(int numberOfBlobsToCreate)
@@ -189,6 +242,79 @@ namespace RerouteBlobs.Implementations
                 await blockBlob.UploadFromFileAsync($"C:/Users/alan.costa/Desktop/sample.jpg");
                 Log.Logger.Information(blockBlob.Name);}
         }
-    }
 
+        public async Task CountBlobsDirectoriesAndPages()
+        {
+            var cloudBlocks = 0;
+            var cloudDirectory = 0;
+            var cloudPages = 0;
+            var noDots = 0;
+            var notePages = 0;
+
+            try
+            {
+                BlobContinuationToken token = null;
+                do
+                {
+                    var watchAllBlobsSelection = Stopwatch.StartNew();
+                    BlobResultSegment resultSegment = await _azureStorage.Container.ListBlobsSegmentedAsync(token);
+                    watchAllBlobsSelection.Stop();
+                    var elapsedMs = watchAllBlobsSelection.ElapsedMilliseconds;
+                    _logger.LogInformation($"Gettting all blobs elapsed time (ms): {elapsedMs}");
+                    token = resultSegment.ContinuationToken;
+
+                    var watchCopyingBlobs = Stopwatch.StartNew();
+                    foreach (IListBlobItem item in resultSegment.Results)
+                    {
+
+                        if (item.GetType() == typeof(CloudBlockBlob))
+                        {
+                            CloudBlockBlob blob = (CloudBlockBlob)item;
+                            if (blob.Name.Contains("."))
+                            {
+                                NewFileName FileName = GetBlobDetails(blob);
+                                if (FileName.ApplicantId.Contains("NotePage"))
+                                {
+                                    notePages++;
+                                    continue;
+                                }
+                            }
+                            else
+                            {
+                                noDots++;
+                            }
+
+                            cloudBlocks++;
+                        }
+                        else if (item.GetType() == typeof(CloudBlobDirectory))
+                        {
+                            cloudDirectory++;
+                        }
+                        else if (item.GetType() == typeof(CloudPageBlob))
+                        {
+                            cloudPages++;
+                        }
+                    }
+                    watchCopyingBlobs.Stop();
+                    /* Only run this if you want to create records to be processed.
+                     * await CreateNBlobsOf500KbAsync(1200);
+                     */
+                    /*
+                     */
+                    _logger.LogInformation($"Copying blobs elapsed time(ms): {watchCopyingBlobs.ElapsedMilliseconds}");
+                } while (token != null);
+                _logger.LogInformation($"Cloud Blobs: {cloudBlocks}");
+                _logger.LogInformation($"Cloud Directory: {cloudDirectory}");
+                _logger.LogInformation($"No Dots: {noDots}");
+                _logger.LogInformation($"Note Pages: {notePages}");
+                _logger.LogInformation("Finished with the Script.");
+
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
+        }
+    }
 }

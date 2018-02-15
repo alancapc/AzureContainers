@@ -1,9 +1,9 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using AzureContainers.Configurations;
+using AzureContainers.Interfaces;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using RerouteBlobs.Configurations;
-using RerouteBlobs.Interfaces;
 
-namespace RerouteBlobs
+namespace AzureContainers
 {
     public class App
     {
@@ -28,7 +28,7 @@ namespace RerouteBlobs
         {
             // add provisional services here if you wish
             _logger.LogInformation( "Starting Blob Service..." );
-
+            _logger.LogInformation($"C:/logs/SAM/RerouteBlobs.log");
             _blobService.Run();
 
             System.Console.ReadKey();

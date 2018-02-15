@@ -1,8 +1,8 @@
-﻿using Microsoft.WindowsAzure.Storage;
-using Microsoft.WindowsAzure.Storage.Blob;
-
-namespace RerouteBlobs.Interfaces
+﻿namespace AzureContainers.Interfaces
 {
+    using Microsoft.WindowsAzure.Storage;
+    using Microsoft.WindowsAzure.Storage.Blob;
+
     public interface IAzureStorage
     {
         CloudBlobClient BlobClient { get; }

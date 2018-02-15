@@ -1,16 +1,14 @@
-﻿using System;
-using System.IO;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using RerouteBlobs.Configurations;
-using RerouteBlobs.Implementations;
-using RerouteBlobs.Interfaces;
-using Serilog;
-using Serilog.Sinks.File;
-
-namespace RerouteBlobs
+﻿namespace AzureContainers
 {
+    using Configurations;
+    using Implementations;
+    using System.IO;
+    using Interfaces;
+    using Microsoft.Extensions.Configuration;
+    using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Extensions.Logging;
+    using Serilog;
+
     public class Program
     {
         public static void Main(string[] args)
@@ -31,11 +29,7 @@ namespace RerouteBlobs
             // add configured instance of logging
             serviceCollection.AddSingleton(new LoggerFactory()
                 .AddConsole()
-                .AddSerilog()
                 .AddDebug());
-
-            // add logging
-            serviceCollection.AddLogging();
 
             // build configuration
             var configuration = new ConfigurationBuilder()
@@ -47,10 +41,11 @@ namespace RerouteBlobs
 
             // Initialize serilog logger
             Log.Logger = new LoggerConfiguration()
-                .WriteTo.File($"C:/logs/RerouteBlobs.log")
-                .MinimumLevel.Debug()
                 .Enrich.FromLogContext()
+                .WriteTo.File($"C:/logs/SAM/RerouteBlobs.log")
+                .MinimumLevel.Debug()
                 .CreateLogger();
+            serviceCollection.AddLogging(loggingBuilder => loggingBuilder.AddSerilog(dispose: true));
 
             // add services
             serviceCollection.AddTransient<IBlobService, BlobService>();

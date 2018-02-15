@@ -1,13 +1,15 @@
-﻿using System.Threading.Tasks;
-
-namespace RerouteBlobs.Interfaces
+﻿namespace AzureContainers.Interfaces
 {
+    using System.Threading.Tasks;
     public interface IBlobService
     {
         Task Run();
 
-        Task MoveBlobInSameStorageAccountAsync();
+        Task CountBlobsDirectoriesAndPages();
+        Task SaveAllBlobNamesToFileAsync();
+        Task CopyBlobInSameStorageAccountAsync();
 
         Task CreateNBlobsOf500KbAsync(int numbeOfBlobsToCreate);
+
     }
 }

@@ -1,4 +1,4 @@
-﻿namespace RerouteBlobs.Configurations
+﻿namespace AzureContainers.Configurations
 {
     public class AzureConfig 
     {

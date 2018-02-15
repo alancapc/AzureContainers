@@ -1,12 +1,11 @@
-﻿using System;
-using Microsoft.Extensions.Options;
-using Microsoft.WindowsAzure.Storage;
-using Microsoft.WindowsAzure.Storage.Blob;
-using RerouteBlobs.Configurations;
-using RerouteBlobs.Interfaces;
-
-namespace RerouteBlobs
+﻿namespace AzureContainers
 {
+    using Configurations;
+    using Interfaces;
+    using Microsoft.Extensions.Options;
+    using Microsoft.WindowsAzure.Storage;
+    using Microsoft.WindowsAzure.Storage.Blob;
+
     public class AzureStorage : IAzureStorage
     {
         private readonly AzureConfig _azureConfig;
