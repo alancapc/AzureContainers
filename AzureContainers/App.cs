@@ -27,7 +27,8 @@ namespace AzureContainers
         public void Run()
         {
             // add provisional services here if you wish
-            _logger.LogInformation( "Starting Blob Service..." );
+            _logger.LogInformation("Starting Blob Service...");
+            _logger.LogInformation("testing git");
             _logger.LogInformation($"C:/logs/SAM/RerouteBlobs.log");
             _blobService.Run();
 
